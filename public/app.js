@@ -280,18 +280,37 @@ function play(c, pushUrl = true) {
     vid.src = src;
     vid.play().then(() => (pstatus.textContent = '')).catch(() => {});
     vid.onplaying = () => (pstatus.textContent = '');
-    vid.onerror = () => (pstatus.textContent = 'stream unavailable — it may be offline or geo-blocked');
+    vid.onerror = async () => {
+      let code = 0;
+      try { code = (await fetch(src)).status; } catch {} // ask the proxy what the upstream said
+      pstatus.textContent = streamMessage(code, '');
+    };
   } else if (window.Hls && Hls.isSupported()) {
     hls = new Hls({ maxBufferLength: 20, manifestLoadingTimeOut: 15000 });
     hls.loadSource(src);
     hls.attachMedia(vid);
     hls.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); pstatus.textContent = ''; });
     hls.on(Hls.Events.ERROR, (_e, d) => {
-      if (d.fatal) pstatus.textContent = 'stream unavailable — it may be offline or geo-blocked';
+      if (!d.fatal) return;
+      const code = (d.response && d.response.code) || 0;       // HTTP status the proxy returned
+      pstatus.textContent = streamMessage(code, d.details || '');
     });
   } else {
     vid.src = src;
   }
+}
+
+// Map a proxy/upstream HTTP status to a clear human reason.
+function streamMessage(code, detail) {
+  if (code === 401 || code === 403)
+    return '🔒 Blocked — this channel is geo-restricted, so the server can’t reach it from its region.';
+  if (code === 404 || code === 410) return '📴 Offline — this stream no longer exists.';
+  if (/timeout/i.test(detail)) return '⏱️ No response — the stream timed out.';
+  if (code === 502 || code === 504 || code === 0)
+    return '📴 Offline — the stream isn’t responding (it may be a dead link).';
+  if (code >= 500) return `⚠️ Stream error — upstream returned HTTP ${code}.`;
+  if (code) return `⚠️ Unavailable — the stream returned HTTP ${code}.`;
+  return 'Stream unavailable — it may be offline or geo-restricted.';
 }
 
 function closePlayer(pushUrl = true) {
