@@ -21,8 +21,8 @@ function cleanName(raw) {
   n = n.replace(QUALITY, '').trim(); // drop trailing (1080p) etc.
   return n || raw;
 }
-function parse(file) {
-  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+function parseM3U(text) {
+  const lines = text.split(/\r?\n/);
   const out = [];
   let cur = null;
   for (const line of lines) {
@@ -54,15 +54,51 @@ function parse(file) {
   }
   return out;
 }
-const CH = parse(path.join(DIR, 'channels.m3u'));
-const COUNTRIES = JSON.parse(fs.readFileSync(path.join(DIR, 'countries.json'), 'utf8'));
-console.log(`Loaded ${CH.length} channels, ${COUNTRIES.length} countries.`);
 
-// compact, cacheable payloads (array index == server channel index)
-const CHANNELS_JSON = JSON.stringify(
-  CH.map((c) => ({ n: c.name, c: c.country, l: c.logo, id: c.id, g: c.geo ? 1 : 0, x: c.closed ? 1 : 0 }))
-);
-const COUNTRIES_JSON = JSON.stringify(COUNTRIES.map((c) => ({ name: c.name, code: c.code, flag: c.flag })));
+// ---------- channel data (seeded from bundled files, kept in sync with iptv-org) ----------
+let CH = [];                 // [{name,country,logo,id,ref,ua,geo,closed,url}]
+let CHANNELS_JSON = '[]';    // compact payload; array index == server channel index
+let COUNTRIES_JSON = '[]';
+let lastSync = null;         // ISO string of the last successful upstream sync
+
+function setData(channels, countries) {
+  CH = channels;
+  CHANNELS_JSON = JSON.stringify(
+    CH.map((c) => ({ n: c.name, c: c.country, l: c.logo, id: c.id, g: c.geo ? 1 : 0, x: c.closed ? 1 : 0 }))
+  );
+  if (countries) COUNTRIES_JSON = JSON.stringify(countries.map((c) => ({ name: c.name, code: c.code, flag: c.flag })));
+}
+
+// seed synchronously from the files baked into the image, so the app works instantly / offline
+setData(parseM3U(fs.readFileSync(path.join(DIR, 'channels.m3u'), 'utf8')),
+        JSON.parse(fs.readFileSync(path.join(DIR, 'countries.json'), 'utf8')));
+console.log(`Seeded ${CH.length} channels from bundled files.`);
+
+// ---------- keep in sync with the official iptv-org lists ----------
+const SRC_CHANNELS = process.env.CHANNELS_URL || 'https://iptv-org.github.io/iptv/index.country.m3u';
+const SRC_COUNTRIES = process.env.COUNTRIES_URL || 'https://iptv-org.github.io/api/countries.json';
+const SYNC_HOURS = Number(process.env.SYNC_HOURS || 24); // 0 disables syncing
+
+async function syncFromUpstream() {
+  try {
+    const [m3u, countries] = await Promise.all([
+      fetch(SRC_CHANNELS).then((r) => { if (!r.ok) throw new Error('channels HTTP ' + r.status); return r.text(); }),
+      fetch(SRC_COUNTRIES).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]);
+    const channels = parseM3U(m3u);
+    if (channels.length < 1000) throw new Error(`suspiciously few channels (${channels.length}) — keeping current`);
+    setData(channels, countries);
+    lastSync = new Date().toISOString();
+    console.log(`Synced ${channels.length} channels from iptv-org at ${lastSync}.`);
+  } catch (e) {
+    console.warn('Sync failed, keeping current data:', e.message);
+  }
+}
+
+if (SYNC_HOURS > 0) {
+  syncFromUpstream(); // refresh shortly after startup
+  setInterval(syncFromUpstream, SYNC_HOURS * 3600 * 1000).unref();
+}
 
 // ---------- helpers ----------
 const send = (res, code, type, body, extra = {}) =>
@@ -124,6 +160,10 @@ const server = http.createServer(async (req, res) => {
   if (p === '/api/channels') return send(res, 200, 'application/json', CHANNELS_JSON, { 'Cache-Control': 'public, max-age=600' });
   if (p === '/api/countries') return send(res, 200, 'application/json', COUNTRIES_JSON, { 'Cache-Control': 'public, max-age=600' });
   if (p === '/healthz') return send(res, 200, 'text/plain', 'ok');
+  if (p === '/api/status')
+    return send(res, 200, 'application/json',
+      JSON.stringify({ channels: CH.length, lastSync, syncHours: SYNC_HOURS, source: SRC_CHANNELS }));
+  if (p === '/api/sync') { syncFromUpstream(); return send(res, 202, 'application/json', JSON.stringify({ triggered: true })); }
 
   if (p === '/proxy') {
     const i = u.searchParams.get('i');

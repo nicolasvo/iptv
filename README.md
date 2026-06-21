@@ -65,13 +65,30 @@ After deploying, reload Caddy: `docker compose exec caddy caddy reload --config 
 
 **DNS:** point an `A`/`AAAA` record for your `IPTV_DOMAIN` at the host so Caddy can issue a TLS cert.
 
-## Updating the channel list
+## Staying in sync with iptv-org
+
+The server keeps itself in sync with the official lists automatically:
+
+- On startup it seeds from the bundled `channels.m3u` / `countries.json` (so it works instantly, even offline).
+- Then it fetches the latest from iptv-org and refreshes its in-memory data **every `SYNC_HOURS` hours**
+  (default 24 — iptv-org regenerates the lists roughly daily). No restart or rebuild needed.
+- If a fetch fails or returns too few channels, it keeps the current data.
+
+Endpoints / env:
+
+| | |
+|---|---|
+| `GET /api/status` | `{ channels, lastSync, syncHours, source }` |
+| `GET /api/sync` | trigger a refresh now (returns `202`) |
+| `SYNC_HOURS` | refresh interval in hours; `0` disables auto-sync |
+| `CHANNELS_URL` / `COUNTRIES_URL` | override the upstream sources |
+
+The bundled files are just the offline seed. To refresh that seed for committing (optional):
 
 ```bash
 curl -sL -o channels.m3u https://iptv-org.github.io/iptv/index.country.m3u
 curl -sL -o countries.json https://iptv-org.github.io/api/countries.json
 ```
-then rebuild the image.
 
 ## Notes
 
