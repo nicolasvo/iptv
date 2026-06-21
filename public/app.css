@@ -115,6 +115,10 @@ main { min-height: 100vh; }
 .row .name .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .code-cell { width: 280px; flex: none; padding: 0 16px; display: none; }
 @media (min-width: 1024px) { .row .code-cell { display: flex; } }
+.row .link-cell { width: 46px; flex: none; display: flex; align-items: center; justify-content: center; padding-right: 6px; }
+.row .copy { background: none; border: 0; cursor: pointer; color: var(--muted); padding: 6px; border-radius: 6px; display: inline-flex; }
+.row .copy:hover { color: var(--accent); background: var(--card); }
+.row .copy.ok { color: #4caf50; }
 code.id { font-family: ui-monospace, monospace; font-size: 13px; color: var(--code-text); background: var(--code-bg); padding: 4px 8px; border-radius: 3px; user-select: all; word-break: break-word; }
 .badge { font-size: 11px; line-height: 1; padding: 4px 7px; border-radius: 9999px; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
 .badge.geo { color: #e0666c; }
@@ -129,7 +133,9 @@ code.id { font-family: ui-monospace, monospace; font-size: 13px; color: var(--co
 .player-box { width: 100%; background: #000; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.55); }
 .player-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--card); cursor: move; }
 .player-bar b { color: var(--name); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-bar .x { cursor: pointer; color: var(--muted); border: 0; background: none; font-size: 20px; line-height: 1; padding: 0 4px; }
-.player-bar .x:hover { color: var(--name); }
+.player-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.player-bar .x { cursor: pointer; color: var(--muted); border: 0; background: none; line-height: 1; padding: 4px; display: inline-flex; border-radius: 6px; }
+.player-bar .x:hover { color: var(--name); background: var(--row-hover); }
+.player-bar .x.ok { color: #4caf50; }
 .player-box video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; }
 .player-status { padding: 10px 14px; background: var(--card); color: var(--muted); font-family: ui-monospace, monospace; font-size: 12.5px; min-height: 0; }

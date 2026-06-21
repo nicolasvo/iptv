@@ -12,6 +12,8 @@ const ICONS = {
   star: 'M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z',
   starOutline: 'M12,15.39L8.24,17.66L9.23,13.38L5.91,10.5L10.29,10.13L12,6.09L13.71,10.13L18.09,10.5L14.77,13.38L15.76,17.66M22,9.24L14.81,8.63L12,2L9.19,8.63L2,9.24L7.45,13.97L5.82,21L12,17.27L18.18,21L16.54,13.97L22,9.24Z',
   imageOff: 'M22 20.7L3.3 2L2 3.3L3 4.3V19C3 20.1 3.9 21 5 21H19.7L20.7 22L22 20.7M5 19V6.3L12.6 13.9L11.1 15.8L9 13.1L6 17H15.7L17.7 19H5M8.8 5L6.8 3H19C20.1 3 21 3.9 21 5V17.2L19 15.2V5H8.8Z',
+  link: 'M10.59,13.41C11,13.8 11,14.44 10.59,14.83C10.2,15.22 9.56,15.22 9.17,14.83C7.22,12.88 7.22,9.71 9.17,7.76V7.76L12.71,4.22C14.66,2.27 17.83,2.27 19.78,4.22C21.73,6.17 21.73,9.34 19.78,11.29L18.29,12.78C18.3,11.96 18.17,11.14 17.89,10.36L18.36,9.88C19.54,8.71 19.54,6.81 18.36,5.64C17.19,4.46 15.29,4.46 14.12,5.64L10.59,9.17C9.41,10.34 9.41,12.24 10.59,13.41M13.41,9.17C13.8,8.78 14.44,8.78 14.83,9.17C16.78,11.12 16.78,14.29 14.83,16.24V16.24L11.29,19.78C9.34,21.73 6.17,21.73 4.22,19.78C2.27,17.83 2.27,14.66 4.22,12.71L5.71,11.22C5.7,12.04 5.83,12.86 6.11,13.65L5.64,14.12C4.46,15.29 4.46,17.19 5.64,18.36C6.81,19.54 8.71,19.54 9.88,18.36L13.41,14.83C14.59,13.66 14.59,11.76 13.41,10.59C13,10.2 13,9.56 13.41,9.17Z',
+  check: 'M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z',
 };
 const icon = (name, size = 24) => `<svg class="mdi" viewBox="0 0 24 24" width="${size}" height="${size}"><path d="${ICONS[name]}"/></svg>`;
 
@@ -53,6 +55,7 @@ Promise.all([
   });
   for (const c of CH) { const k = favKey(c); if (!keyToChannel.has(k)) keyToChannel.set(k, c); }
   render();
+  applyUrl(); // open a channel directly if the URL has ?play=<token>
 });
 
 // ---------- favorites (persisted in localStorage) ----------
@@ -232,8 +235,10 @@ function rowEl(c) {
     `<div class="fav-cell">${star}</div>` +
     `<div class="logo-cell">${logo}</div>` +
     `<div class="name-cell"><div class="name"><a class="label">${esc(c.n)}</a>${badges}</div></div>` +
-    `<div class="code-cell">${c.id ? `<code class="id">${esc(c.id)}</code>` : ''}</div>`;
+    `<div class="code-cell">${c.id ? `<code class="id">${esc(c.id)}</code>` : ''}</div>` +
+    `<div class="link-cell"><button class="copy" title="Copy shareable link" aria-label="Copy link">${icon('link', 18)}</button></div>`;
   row.querySelector('.fav').onclick = (e) => { e.stopPropagation(); toggleFav(c); };
+  row.querySelector('.copy').onclick = (e) => { e.stopPropagation(); copyLink(c, e.currentTarget, 18); };
   row.onclick = (e) => {
     if (e.target.closest('code.id')) return; // let the channel-id code be selectable/copyable
     e.preventDefault();
@@ -247,13 +252,26 @@ function esc(s) {
 }
 
 // ---------- player ----------
-let hls = null;
+let hls = null, current = null;
 const player = $('#player'), vid = $('#vid'), pstatus = $('#pstatus');
 
-function play(c) {
+// shareable token for a channel: its stable id when present, else "@<index>"
+const channelToken = (c) => c.id || '@' + c.i;
+function resolveToken(tok) {
+  if (!tok) return null;
+  if (tok[0] === '@') return CH[+tok.slice(1)] || null;
+  return CH.find((c) => c.id === tok) || null;
+}
+
+function play(c, pushUrl = true) {
+  current = c;
   $('#pname').textContent = c.n;
   pstatus.textContent = 'connecting…';
   player.classList.add('show');
+  if (pushUrl) {
+    const url = location.pathname + '?play=' + encodeURIComponent(channelToken(c));
+    history.pushState({ play: channelToken(c) }, '', url);
+  }
   const src = '/proxy?i=' + c.i;
   if (hls) { hls.destroy(); hls = null; }
   vid.removeAttribute('src');
@@ -276,13 +294,37 @@ function play(c) {
   }
 }
 
-function closePlayer() {
+function closePlayer(pushUrl = true) {
   player.classList.remove('show');
+  current = null;
   vid.pause(); vid.removeAttribute('src'); vid.load();
   if (hls) { hls.destroy(); hls = null; }
+  if (pushUrl && new URLSearchParams(location.search).has('play')) {
+    history.pushState({}, '', location.pathname);
+  }
 }
-$('#pclose').onclick = closePlayer;
+$('#pclose').onclick = () => closePlayer();
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && player.classList.contains('show')) closePlayer(); });
+
+// ---------- deep linking: ?play=<token> opens the player directly ----------
+function applyUrl() {
+  const tok = new URLSearchParams(location.search).get('play');
+  if (!tok) { if (player.classList.contains('show')) closePlayer(false); return; }
+  const c = resolveToken(tok);
+  if (c) play(c, false);
+}
+addEventListener('popstate', applyUrl);
+
+// copy a shareable link to a channel, with a brief check-mark confirmation on the button
+async function copyLink(c, btn, size = 20) {
+  const link = location.origin + location.pathname + '?play=' + encodeURIComponent(channelToken(c));
+  try { await navigator.clipboard.writeText(link); } catch { prompt('Copy this link:', link); return; }
+  if (!btn) return;
+  btn.innerHTML = icon('check', size); btn.classList.add('ok');
+  setTimeout(() => { btn.innerHTML = icon('link', size); btn.classList.remove('ok'); }, 1400);
+}
+$('#pcopy').innerHTML = icon('link', 20);
+$('#pcopy').onclick = () => { if (current) copyLink(current, $('#pcopy'), 20); };
 
 // drag the mini-player by its title bar
 (function makeDraggable() {
