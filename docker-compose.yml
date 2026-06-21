@@ -1,0 +1,17 @@
+# Production: served by the shared Caddy (set IPTV_DOMAIN in .env).
+# Caddy reverse-proxies to this container by name on the external caddy-net.
+# Bring up with:  docker compose up -d --build
+services:
+  iptv:
+    build: .
+    image: iptv
+    container_name: iptv
+    restart: always
+    expose:
+      - "8765"
+    networks:
+      - caddy-net
+
+networks:
+  caddy-net:
+    external: true

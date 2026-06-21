@@ -1,0 +1,16 @@
+# Dev: run locally, reachable at http://localhost:7777
+# Bring up with:  docker compose -f docker-compose-dev.yml up --build
+services:
+  iptv:
+    build: .
+    image: iptv-dev
+    container_name: iptv-dev
+    restart: unless-stopped
+    ports:
+      - "7777:8765"
+    # live-mount source so UI edits show up on refresh without a rebuild
+    volumes:
+      - ./public:/app/public:ro
+      - ./server.js:/app/server.js:ro
+      - ./channels.m3u:/app/channels.m3u:ro
+      - ./countries.json:/app/countries.json:ro
